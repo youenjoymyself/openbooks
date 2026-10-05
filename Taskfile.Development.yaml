@@ -6,8 +6,14 @@ tasks:
   go-update:
     desc: Update Golang dependencies.
     cmds:
-      - go get -u ./..
+      - go get -u ./...
       - go mod tidy
+
+  test:
+    desc: Run Go tests with the race detector. Requires the client to be built first (server/app/dist).
+    cmds:
+      - go vet ./...
+      - go test -race ./...
 
   npm-update:
     desc: Update Node.JS client side dependencies.

@@ -1,24 +1,27 @@
-FROM node:16 as web
+# Web assets are platform independent, so always build them on the build platform.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS web
 WORKDIR /web
-COPY . .
-WORKDIR /web/server/app/
-RUN npm install
+COPY server/app/package.json server/app/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY server/app/ ./
 RUN npm run build
 
-FROM golang as build
-WORKDIR /go/src/
+# Cross compile the Go binary for the target platform.
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
-COPY --from=web /web/ .
+COPY --from=web /web/dist ./server/app/dist
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOARM=${TARGETVARIANT#v} \
+    go build -trimpath -ldflags="-s -w" -o /out/openbooks ./cmd/openbooks
 
-ENV CGO_ENABLED=0
-RUN go get -d -v ./...
-RUN go install -v ./...
-WORKDIR /go/src/cmd/openbooks/
-RUN go build
-
-FROM gcr.io/distroless/static as app
+FROM gcr.io/distroless/static AS app
 WORKDIR /app
-COPY --from=build /go/src/cmd/openbooks/openbooks .
+COPY --from=build /out/openbooks .
 
 EXPOSE 80
 VOLUME [ "/books" ]
