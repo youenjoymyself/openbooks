@@ -1,12 +1,10 @@
 # Simple workflow for deploying static content to GitHub Pages
 name: Deploy static content to Pages
 
+# Only runs when triggered manually from the Actions tab. Enable GitHub Pages
+# (Settings -> Pages -> Source: GitHub Actions) before running it.
 on:
   workflow_dispatch:
-  # Runs on pushes targeting the default branch
-  push:
-    paths:
-      - "docs/**"
 
 defaults:
   run:
