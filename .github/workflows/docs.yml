@@ -1,12 +1,10 @@
 # Simple workflow for deploying static content to GitHub Pages
 name: Deploy static content to Pages
 
+# Only runs when triggered manually from the Actions tab. Enable GitHub Pages
+# (Settings -> Pages -> Source: GitHub Actions) before running it.
 on:
   workflow_dispatch:
-  # Runs on pushes targeting the default branch
-  push:
-    paths:
-      - "docs/**"
 
 defaults:
   run:
@@ -33,11 +31,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Setup Pages
-        uses: actions/configure-pages@v2
+        uses: actions/configure-pages@v5
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
       - name: Build MkDocs Site
@@ -45,9 +43,9 @@ jobs:
           pip install -r requirements.txt
           mkdocs build
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v3
         with:
           path: "docs/site/"
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v1
+        uses: actions/deploy-pages@v4

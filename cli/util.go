@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -18,7 +19,10 @@ import (
 	"github.com/evan-buss/openbooks/util"
 )
 
-var servers []string
+var (
+	servers      []string
+	serversMutex sync.RWMutex
+)
 
 const clearLine = "\r\033[2K"
 
@@ -43,15 +47,17 @@ func instantiate(config *Config) {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("%sConnected to %s.\n", clearLine, config.Server)
+	fmt.Printf("%sConnected to %s as %s.\n", clearLine, config.Server, conn.Nick())
 }
 
 // Required handlers are used regardless of what CLI mode is selected.
 // Keep alive pings and other core IRC client features
 func addEssentialHandlers(handler core.EventHandler, config *Config) {
-	handler[core.Ping] = config.pingHandler
 	handler[core.Version] = config.versionHandler
+	handler[core.Disconnected] = config.disconnectedHandler
 	handler[core.ServerList] = func(text string) {
+		serversMutex.Lock()
+		defer serversMutex.Unlock()
 		servers = core.ParseServers(text).ElevatedUsers
 	}
 }
@@ -70,13 +76,20 @@ func (config *Config) setupLogger(handler core.EventHandler) io.Closer {
 
 // Show warning message if the server they are downloading from is not online.
 func warnIfServerOffline(bookLine string) {
-	for _, server := range servers {
-		if strings.HasPrefix(bookLine[1:], server) {
+	bookLine = strings.TrimPrefix(bookLine, "!")
+	for _, server := range onlineServers() {
+		if strings.HasPrefix(bookLine, server+" ") {
 			return
 		}
 	}
 
 	fmt.Println("WARNING: That server is not online. Your request will never complete.")
+}
+
+func onlineServers() []string {
+	serversMutex.RLock()
+	defer serversMutex.RUnlock()
+	return servers
 }
 
 func getLastSearchTime() time.Time {

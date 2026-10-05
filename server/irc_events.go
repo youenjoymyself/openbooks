@@ -16,9 +16,9 @@ func (server *server) NewIrcEventHandler(client *Client) core.EventHandler {
 	handler[core.BadServer] = client.badServerHandler
 	handler[core.SearchAccepted] = client.searchAcceptedHandler
 	handler[core.MatchesFound] = client.matchesFoundHandler
-	handler[core.Ping] = client.pingHandler
 	handler[core.ServerList] = client.userListHandler(server.repository)
 	handler[core.Version] = client.versionHandler(server.config.UserAgent)
+	handler[core.Disconnected] = client.disconnectedHandler
 	return handler
 }
 
@@ -28,14 +28,14 @@ func (c *Client) searchResultHandler(downloadDir string) core.HandlerFunc {
 		extractedPath, err := core.DownloadExtractDCCString(filepath.Join(downloadDir, "books"), text, nil)
 		if err != nil {
 			c.log.Println(err)
-			c.send <- newErrorResponse("Error when downloading search results.")
+			c.send(newErrorResponse("Error when downloading search results."))
 			return
 		}
 
 		bookResults, parseErrors, err := core.ParseSearchFile(extractedPath)
 		if err != nil {
 			c.log.Println(err)
-			c.send <- newErrorResponse("Error when parsing search results.")
+			c.send(newErrorResponse("Error when parsing search results."))
 			return
 		}
 
@@ -53,7 +53,7 @@ func (c *Client) searchResultHandler(downloadDir string) core.HandlerFunc {
 		}
 
 		c.log.Printf("Sending %d search results.\n", len(bookResults))
-		c.send <- newSearchResponse(bookResults, parseErrors)
+		c.send(newSearchResponse(bookResults, parseErrors))
 
 		err = os.Remove(extractedPath)
 		if err != nil {
@@ -68,48 +68,54 @@ func (c *Client) bookResultHandler(downloadDir string, disableBrowserDownloads b
 		extractedPath, err := core.DownloadExtractDCCString(filepath.Join(downloadDir, "books"), text, nil)
 		if err != nil {
 			c.log.Println(err)
-			c.send <- newErrorResponse("Error when downloading book.")
+			c.send(newErrorResponse("Error when downloading book."))
 			return
 		}
 
 		c.log.Printf("Sending book entitled '%s'.\n", filepath.Base(extractedPath))
-		c.send <- newDownloadResponse(extractedPath, disableBrowserDownloads)
+		c.send(newDownloadResponse(extractedPath, disableBrowserDownloads))
 	}
 }
 
 // NoResults is called when the server returns that nothing was found for the query
 func (c *Client) noResultsHandler(_ string) {
-	c.send <- newErrorResponse("No results found for the query.")
+	c.send(newErrorResponse("No results found for the query."))
 }
 
 // BadServer is called when the requested download fails because the server is not available
 func (c *Client) badServerHandler(_ string) {
-	c.send <- newErrorResponse("Server is not available. Try another one.")
+	c.send(newErrorResponse("Server is not available. Try another one."))
 }
 
 // SearchAccepted is called when the user's query is accepted into the search queue
 func (c *Client) searchAcceptedHandler(_ string) {
-	c.send <- newStatusResponse(NOTIFY, "Search accepted into the queue.")
+	c.send(newStatusResponse(NOTIFY, "Search accepted into the queue."))
 }
 
 // MatchesFound is called when the server finds matches for the user's query
 func (c *Client) matchesFoundHandler(num string) {
-	c.send <- newStatusResponse(NOTIFY, fmt.Sprintf("Found %s results for your query.", num))
+	c.send(newStatusResponse(NOTIFY, fmt.Sprintf("Found %s results for your query.", num)))
 }
 
-func (c *Client) pingHandler(serverUrl string) {
-	c.irc.Pong(serverUrl)
+// disconnectedHandler is called when the IRC connection is closed unexpectedly
+func (c *Client) disconnectedHandler(reason string) {
+	c.send(StatusResponse{
+		MessageType:      STATUS,
+		NotificationType: DANGER,
+		Title:            "Disconnected from the IRC server. Reload the page to reconnect.",
+		Detail:           reason,
+	})
 }
 
 func (c *Client) versionHandler(version string) core.HandlerFunc {
-	return func(line string) {
-		c.log.Printf("Sending CTCP version response: %s", line)
-		core.SendVersionInfo(c.irc, line, version)
+	return func(sender string) {
+		c.log.Printf("Sending CTCP version response to %s", sender)
+		core.SendVersionInfo(c.irc, sender, version)
 	}
 }
 
 func (c *Client) userListHandler(repo *Repository) core.HandlerFunc {
 	return func(text string) {
-		repo.servers = core.ParseServers(text)
+		repo.SetServers(core.ParseServers(text))
 	}
 }

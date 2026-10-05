@@ -91,7 +91,6 @@ func StartSearch(config Config, query string) {
 	}
 
 	fmt.Printf("Sending search request.")
-	warnIfServerOffline(query)
 	time.Sleep(time.Until(nextSearchTime))
 
 	go core.StartReader(ctx, config.irc, handler)

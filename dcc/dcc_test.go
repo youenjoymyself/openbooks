@@ -64,3 +64,64 @@ func TestDownload(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, text, string(received.Data))
 }
+
+func TestFilenameSanitization(t *testing.T) {
+	cases := map[string]string{
+		`DCC SEND ../../.bashrc 2130706433 1 1`:                    ".bashrc",
+		`DCC SEND /etc/passwd 2130706433 1 1`:                      "passwd",
+		`DCC SEND "..\..\Windows\evil.dll" 2130706433 1 1`:         "evil.dll",
+		`DCC SEND "dir/My Book - Author.epub" 2130706433 1 1`:      "My Book - Author.epub",
+		`DCC SEND "Douglas Adams - Hitchhiker.rar" 2130706433 1 1`: "Douglas Adams - Hitchhiker.rar",
+	}
+	for input, expected := range cases {
+		download, err := ParseString(input)
+		require.NoError(t, err, input)
+		assert.Equal(t, expected, download.Filename, input)
+	}
+
+	for _, input := range []string{
+		`DCC SEND .. 2130706433 1 1`,
+		`DCC SEND "../" 2130706433 1 1`,
+	} {
+		_, err := ParseString(input)
+		assert.ErrorIs(t, err, ErrInvalidFilename, input)
+	}
+
+	_, err := ParseString(`DCC SEND / 2130706433 1 1`)
+	assert.Error(t, err)
+}
+
+// A size of 0 means unknown. Everything until the sender closes the
+// connection should be received.
+func TestDownloadUnknownSize(t *testing.T) {
+	text := "Unknown size content."
+	server := mock.DccServer{
+		Port:   "127.0.0.1:6970",
+		Reader: bytes.NewReader([]byte(text)),
+	}
+	ready := make(chan struct{}, 1)
+	go server.Start(ready)
+	<-ready
+
+	download := Download{Filename: "test.txt", IP: "127.0.0.1", Port: "6970", Size: 0}
+	received := new(mock.WriteCloser)
+	require.NoError(t, download.Download(received))
+	assert.Equal(t, text, string(received.Data))
+}
+
+// Senders that send more than the advertised size must not grow the file.
+func TestDownloadTruncatesExtraData(t *testing.T) {
+	text := "0123456789EXTRA"
+	server := mock.DccServer{
+		Port:   "127.0.0.1:6972",
+		Reader: bytes.NewReader([]byte(text)),
+	}
+	ready := make(chan struct{}, 1)
+	go server.Start(ready)
+	<-ready
+
+	download := Download{Filename: "test.txt", IP: "127.0.0.1", Port: "6972", Size: 10}
+	received := new(mock.WriteCloser)
+	require.NoError(t, download.Download(received))
+	assert.Equal(t, "0123456789", string(received.Data))
+}

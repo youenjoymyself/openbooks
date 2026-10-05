@@ -16,7 +16,7 @@ tasks:
       - npm-build
     dir: cmd/openbooks
     cmds:
-      - go get
+      - go mod download
       - env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ./../../build/openbooks.exe
       - env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ./../../build/openbooks_mac
       - env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ./../../build/openbooks_mac_arm
@@ -27,4 +27,4 @@ tasks:
     desc: Build OpenBooks in the experimental desktop mode with a WebView GUI.
     dir: cmd/openbooks
     cmds:
-      - go build -tags webviews
+      - go build -tags webview

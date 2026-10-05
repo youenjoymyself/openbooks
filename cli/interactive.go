@@ -39,7 +39,7 @@ func terminalMenu(config Config) {
 		warnIfServerOffline(clean(message))
 	case "se":
 		fmt.Println("\nAvailable Servers:")
-		for _, server := range servers {
+		for _, server := range onlineServers() {
 			fmt.Printf("  %s\n", server)
 		}
 		terminalMenu(config)

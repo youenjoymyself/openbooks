@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/evan-buss/openbooks/irc"
 	"io/fs"
 	"log"
 	"net/http"
@@ -14,12 +13,18 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/evan-buss/openbooks/irc"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 )
+
+// Origins of the Vite development server.
+var devOrigins = []string{"http://127.0.0.1:5173", "http://localhost:5173"}
 
 //go:embed app/dist
 var reactClient embed.FS
@@ -58,17 +63,18 @@ func (server *server) serveWs() http.HandlerFunc {
 		}
 
 		userId, err := uuid.Parse(cookie.Value)
-		_, alreadyConnected := server.clients[userId]
 
 		// If invalid UUID or the same browser tries to connect again or multiple browser connections
 		// Don't connect to IRC or create new client
-		if err != nil || alreadyConnected || len(server.clients) > 0 {
+		if err != nil || !server.canConnect(userId) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		upgrader.CheckOrigin = func(req *http.Request) bool {
-			return true
+		upgrader := websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin:     server.checkOrigin,
 		}
 
 		conn, err := upgrader.Upgrade(w, r, w.Header())
@@ -77,23 +83,68 @@ func (server *server) serveWs() http.HandlerFunc {
 			return
 		}
 
+		ctx, cancel := context.WithCancel(context.Background())
 		client := &Client{
-			conn: conn,
-			send: make(chan interface{}, 128),
-			uuid: userId,
-			irc:  irc.New(server.config.UserName, server.config.UserAgent),
-			log:  log.New(os.Stdout, fmt.Sprintf("CLIENT (%s): ", server.config.UserName), log.LstdFlags|log.Lmsgprefix),
-			ctx:  context.Background(),
+			conn:   conn,
+			outbox: make(chan interface{}, 128),
+			uuid:   userId,
+			irc:    irc.New(server.config.UserName, server.config.UserAgent),
+			log:    log.New(os.Stdout, fmt.Sprintf("CLIENT (%s): ", server.config.UserName), log.LstdFlags|log.Lmsgprefix),
+			ctx:    ctx,
+			cancel: cancel,
+		}
+
+		// Another client may have connected while this one was upgrading.
+		if !server.addClient(client) {
+			cancel()
+			conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "already connected"))
+			conn.Close()
+			return
 		}
 
 		server.log.Printf("Client connected from %s\n", conn.RemoteAddr().String())
 		client.log.Println("New client created.")
 
-		server.register <- client
-
 		go server.writePump(client)
 		go server.readPump(client)
 	}
+}
+
+// checkOrigin only allows websocket connections from pages served by this
+// server (directly or through a reverse proxy) and explicitly allowed origins.
+// Prevents other websites from controlling OpenBooks through the user's browser.
+func (server *server) checkOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		// Not a browser request.
+		return true
+	}
+
+	originURL, err := url.Parse(origin)
+	if err != nil || originURL.Host == "" {
+		server.log.Printf("Rejected websocket connection from invalid origin %q.\n", origin)
+		return false
+	}
+
+	if strings.EqualFold(originURL.Host, r.Host) {
+		return true
+	}
+
+	for _, forwardedHost := range strings.Split(r.Header.Get("X-Forwarded-Host"), ",") {
+		forwardedHost = strings.TrimSpace(forwardedHost)
+		if forwardedHost != "" && strings.EqualFold(originURL.Host, forwardedHost) {
+			return true
+		}
+	}
+
+	for _, allowed := range slices.Concat(devOrigins, server.config.AllowedOrigins) {
+		if strings.EqualFold(origin, strings.TrimSuffix(allowed, "/")) {
+			return true
+		}
+	}
+
+	server.log.Printf("Rejected websocket connection from origin %s. Use --allowed-origins to allow it.\n", origin)
+	return false
 }
 
 func (server *server) staticFilesHandler(assetPath string) http.Handler {
@@ -115,17 +166,19 @@ func (server *server) statsHandler() http.HandlerFunc {
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		server.clientsMutex.RLock()
 		result := make([]statsReponse, 0, len(server.clients))
 
 		for _, client := range server.clients {
 			details := statsReponse{
 				UUID: client.uuid.String(),
-				Name: client.irc.Username,
+				Name: client.irc.Nick(),
 				IP:   client.conn.RemoteAddr().String(),
 			}
 
 			result = append(result, details)
 		}
+		server.clientsMutex.RUnlock()
 
 		json.NewEncoder(w).Encode(result)
 	}
@@ -133,7 +186,7 @@ func (server *server) statsHandler() http.HandlerFunc {
 
 func (server *server) serverListHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(server.repository.servers)
+		json.NewEncoder(w).Encode(server.repository.Servers())
 	}
 }
 
@@ -165,6 +218,7 @@ func (server *server) getAllBooksHandler() http.HandlerFunc {
 			info, err := book.Info()
 			if err != nil {
 				server.log.Println(err)
+				continue
 			}
 
 			dl := download{
@@ -202,13 +256,29 @@ func (server *server) deleteBooksHandler() http.HandlerFunc {
 		fileName, err := url.PathUnescape(chi.URLParam(r, "fileName"))
 		if err != nil {
 			server.log.Printf("Error unescaping path: %s\n", err)
-			w.WriteHeader(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// Only allow deleting files directly inside of the books directory.
+		if !isPlainFileName(fileName) {
+			server.log.Printf("Refusing to delete invalid file name: %q\n", fileName)
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
 
 		err = os.Remove(filepath.Join(server.config.DownloadDir, "books", fileName))
 		if err != nil {
 			server.log.Printf("Error deleting book file: %s\n", err)
 			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 	}
+}
+
+// isPlainFileName returns true if name is a single file name without any
+// directory components.
+func isPlainFileName(name string) bool {
+	return name != "" && name != "." && name != ".." &&
+		!strings.ContainsAny(name, `/\`) && filepath.Base(name) == name
 }

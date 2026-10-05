@@ -2,7 +2,7 @@
 
 package desktop
 
-import "github.com/webview/webview"
+import webview "github.com/webview/webview_go"
 
 func StartWebView(url string, debug bool) {
 	w := webview.New(debug)

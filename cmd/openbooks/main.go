@@ -13,7 +13,7 @@ import (
 )
 
 // version will always match the GitHub release versions.
-var version = "4.5.0"
+var version = "4.6.0"
 
 // We only increment ircVersion when irc admins require a fix to be made.
 // They can block / permit certain version numbers. ircVersion is the current permitted
@@ -62,6 +62,8 @@ var desktopCmd = &cobra.Command{
 		bindGlobalServerFlags(&desktopConfig)
 		rateLimit, _ := cmd.Flags().GetInt("rate-limit")
 		ensureValidRate(rateLimit, &desktopConfig)
+		// Desktop mode is only used from this computer.
+		desktopConfig.Host = "127.0.0.1"
 		desktopConfig.DisableBrowserDownloads = true
 		desktopConfig.Basepath = "/"
 		desktopConfig.Persist = true

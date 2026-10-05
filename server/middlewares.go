@@ -44,11 +44,9 @@ func (server *server) getClient(ctx context.Context) *Client {
 		return nil
 	}
 
-	if client, ok := server.clients[user]; ok {
-		return client
-	}
-
-	return nil
+	server.clientsMutex.RLock()
+	defer server.clientsMutex.RUnlock()
+	return server.clients[user]
 }
 
 func getUUID(ctx context.Context) uuid.UUID {

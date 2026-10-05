@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/evan-buss/openbooks/core"
 	"github.com/evan-buss/openbooks/dcc"
@@ -22,6 +23,7 @@ func (c Config) searchHandler(text string) {
 	extractedPath, err := core.DownloadExtractDCCString(c.Dir, text, bar)
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
 	fmt.Println("Results location: " + extractedPath)
 }
@@ -39,6 +41,7 @@ func (c Config) downloadHandler(text string) {
 	extractedPath, err := core.DownloadExtractDCCString(c.Dir, text, bar)
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
 	fmt.Println("File location: " + extractedPath)
 }
@@ -67,10 +70,12 @@ func (c Config) matchesFoundHandler(num string) {
 	fmt.Printf("Found %s search results.", num)
 }
 
-func (c Config) pingHandler(_ string) {
-	c.irc.Pong(c.Server)
+func (c *Config) versionHandler(sender string) {
+	core.SendVersionInfo(c.irc, sender, c.Version)
 }
 
-func (c *Config) versionHandler(line string) {
-	core.SendVersionInfo(c.irc, line, c.Version)
+// disconnectedHandler is called when the IRC connection closes unexpectedly.
+func (c *Config) disconnectedHandler(reason string) {
+	fmt.Printf("\nDisconnected from the IRC server: %s\n", reason)
+	os.Exit(1)
 }

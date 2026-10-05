@@ -5,8 +5,11 @@ import (
 	"errors"
 	"io"
 	"net"
+	"path"
 	"regexp"
 	"strconv"
+	"strings"
+	"time"
 )
 
 // There are two types of DCC strings this program accepts.
@@ -16,6 +19,14 @@ var (
 	ErrInvalidDCCString = errors.New("invalid dcc send string")
 	ErrInvalidIP        = errors.New("unable to convert int IP to string")
 	ErrMissingBytes     = errors.New("download size didn't match dcc file size. data could be missing")
+	ErrInvalidFilename  = errors.New("invalid dcc file name")
+)
+
+const (
+	// Maximum time to wait for the sender to accept the connection.
+	dialTimeout = 30 * time.Second
+	// Maximum time to wait between received chunks before giving up.
+	idleTimeout = 2 * time.Minute
 )
 
 var dccRegex = regexp.MustCompile(`DCC SEND "?(.+[^"])"?\s(\d+)\s+(\d+)\s+(\d+)\s*`)
@@ -45,8 +56,13 @@ func ParseString(text string) (*Download, error) {
 		return nil, err
 	}
 
+	filename, err := sanitizeFilename(groups[1])
+	if err != nil {
+		return nil, err
+	}
+
 	return &Download{
-		Filename: groups[1],
+		Filename: filename,
 		IP:       ip,
 		Port:     groups[3],
 		Size:     size,
@@ -55,8 +71,7 @@ func ParseString(text string) (*Download, error) {
 
 // Download writes the data contained in the DCC Download
 func (download Download) Download(writer io.Writer) error {
-	// TODO: Maybe specify deadline?
-	conn, err := net.Dial("tcp", download.IP+":"+download.Port)
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(download.IP, download.Port), dialTimeout)
 	if err != nil {
 		return err
 	}
@@ -72,26 +87,53 @@ func (download Download) Download(writer io.Writer) error {
 	// Copy - 2m35s
 	// Custom - 1024 - 35s
 	// Custom - 4096 - 46s, 14s
-	received := 0
+	var received int64
 	bytes := make([]byte, 4096)
-	for int64(received) < download.Size {
+	// A size of 0 means the sender didn't specify one. Read until EOF.
+	for download.Size == 0 || received < download.Size {
+		conn.SetReadDeadline(time.Now().Add(idleTimeout))
 		n, err := conn.Read(bytes)
-		if err != nil {
-			return err
+
+		// Never write more than the advertised size.
+		if download.Size > 0 && received+int64(n) > download.Size {
+			n = int(download.Size - received)
 		}
 
-		_, err = writer.Write(bytes[:n])
+		if n > 0 {
+			if _, writeErr := writer.Write(bytes[:n]); writeErr != nil {
+				return writeErr
+			}
+			received += int64(n)
+		}
+
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		if err != nil {
 			return err
 		}
-		received += n
 	}
 
-	if int64(received) != download.Size {
+	if download.Size == 0 {
+		return nil
+	}
+
+	if received != download.Size {
 		return ErrMissingBytes
 	}
 
 	return nil
+}
+
+// sanitizeFilename reduces a sender-supplied file name to a single path
+// element so that it can't be used to write outside the download directory.
+func sanitizeFilename(name string) (string, error) {
+	name = strings.ReplaceAll(name, "\\", "/")
+	name = path.Base(name)
+	if name == "." || name == ".." || name == "/" || strings.TrimSpace(name) == "" {
+		return "", ErrInvalidFilename
+	}
+	return name, nil
 }
 
 // Convert a given 32 bit IP integer to an IP string
