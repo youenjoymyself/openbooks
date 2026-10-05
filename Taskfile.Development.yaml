@@ -38,18 +38,23 @@ tasks:
       - go run .
 
   cli:
-    desc: Run OpenBooks in CLI Mode.
+    desc: Run OpenBooks in CLI Mode against the mock server. Set the nickname with NAME=<nick>.
     dir: cmd/openbooks
+    interactive: true
+    vars:
+      NAME: '{{.NAME | default "dev"}}'
     cmds:
       - go build
-      - ./openbooks cli --tls=false --server localhost:6667
+      - ./openbooks cli --tls=false --server localhost:6667 --name {{.NAME}} {{.CLI_ARGS}}
 
   server:
-    desc: Run OpenBooks in Server Mode.
+    desc: Run OpenBooks in Server Mode against the mock server. Set the nickname with NAME=<nick>.
     dir: cmd/openbooks
+    vars:
+      NAME: '{{.NAME | default "dev"}}'
     cmds:
       - go build
-      - ./openbooks server --tls=false --server localhost:6667
+      - ./openbooks server --tls=false --server localhost:6667 --name {{.NAME}} {{.CLI_ARGS}}
 
   client:
     desc: Run OpenBooks React Client Application in Development Mode.
@@ -58,7 +63,9 @@ tasks:
       - npm run dev
 
   desktop:
-    desc: Run OpenBooks in the experimental desktop mode with a WebView GUI.
+    desc: Run OpenBooks in the experimental desktop mode with a WebView GUI against the mock server. Set the nickname with NAME=<nick>.
     dir: cmd/openbooks
+    vars:
+      NAME: '{{.NAME | default "dev"}}'
     cmds:
-      - go run -tags webview
+      - go run -tags webview . --tls=false --server localhost:6667 --name {{.NAME}} {{.CLI_ARGS}}
