@@ -1,3 +1,9 @@
+# [v4.6.1] - 2026-10-05
+
+## Fixed
+- Search results for `.azw` files were reported as parse errors.
+- `.html` files were labeled as `htm` in search results.
+
 # [v4.6.0] - 2026-10-04
 
 ## Security

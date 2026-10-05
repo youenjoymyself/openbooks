@@ -90,6 +90,66 @@ func TestSpecialCases(t *testing.T) {
 			},
 		},
 		{
+			"azw format",
+			"!Bsk Patrick Rothfuss - [Kingkiller Chronicle 02] - The Wise Man's Fear (azw).azw ::INFO:: 1.68MB",
+			BookDetail{
+				Server: "Bsk",
+				Author: "Patrick Rothfuss",
+				Title:  "[Kingkiller Chronicle 02] - The Wise Man's Fear (azw)",
+				Format: "azw",
+				Size:   "1.68MB",
+				Full:   "!Bsk Patrick Rothfuss - [Kingkiller Chronicle 02] - The Wise Man's Fear (azw).azw",
+			},
+		},
+		{
+			"azw format, no info block",
+			"!Horla Patrick Rothfuss - [Kingkiller Chronicle 02] - The Wise Man's Fear (azw).azw",
+			BookDetail{
+				Server: "Horla",
+				Author: "Patrick Rothfuss",
+				Title:  "[Kingkiller Chronicle 02] - The Wise Man's Fear (azw)",
+				Format: "azw",
+				Size:   "N/A",
+				Full:   "!Horla Patrick Rothfuss - [Kingkiller Chronicle 02] - The Wise Man's Fear (azw).azw",
+			},
+		},
+		{
+			"azw3 is not reported as azw",
+			"!peapod F Scott Fitzgerald - Great Gatsby, The.azw3  ::INFO:: 260.46KB",
+			BookDetail{
+				Server: "peapod",
+				Author: "F Scott Fitzgerald",
+				Title:  "Great Gatsby, The",
+				Format: "azw3",
+				Size:   "260.46KB",
+				Full:   "!peapod F Scott Fitzgerald - Great Gatsby, The.azw3",
+			},
+		},
+		{
+			"azw3 inside an archive",
+			"!Oatmeal F Scott Fitzgerald - The Great Gatsby (azw3).rar ::INFO:: 300KB",
+			BookDetail{
+				Server: "Oatmeal",
+				Author: "F Scott Fitzgerald",
+				Title:  "The Great Gatsby (azw3)",
+				Format: "azw3",
+				Size:   "300KB",
+				Full:   "!Oatmeal F Scott Fitzgerald - The Great Gatsby (azw3).rar",
+			},
+		},
+		{
+			"html is not reported as htm",
+			"!dragnbreaker Allen, Roger MacBride - Caliban 02 - Inferno.html  ::INFO:: 109.0KB",
+			BookDetail{
+				Server: "dragnbreaker",
+				Author: "Allen, Roger MacBride",
+				Title:  "Caliban 02 - Inferno",
+				Format: "html",
+				Size:   "109.0KB",
+				Full:   "!dragnbreaker Allen, Roger MacBride - Caliban 02 - Inferno.html",
+			},
+		},
+		{
 			"no author",
 			"!peapod The Great Gatsby.pdf  ::INFO:: 254.73KB",
 			BookDetail{
