@@ -1,8 +1,8 @@
 package server
 
 import (
-	"context"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -24,14 +24,9 @@ type server struct {
 	// Shared data
 	repository *Repository
 
-	// Registered clients.
-	clients map[uuid.UUID]*Client
-
-	// Register requests from the clients.
-	register chan *Client
-
-	// Unregister requests from clients.
-	unregister chan *Client
+	// Registered clients. Guarded by clientsMutex.
+	clients      map[uuid.UUID]*Client
+	clientsMutex sync.RWMutex
 
 	log *log.Logger
 
@@ -45,6 +40,7 @@ type server struct {
 // Config contains settings for server
 type Config struct {
 	Log                     bool
+	Host                    string
 	Port                    string
 	UserName                string
 	Persist                 bool
@@ -56,14 +52,15 @@ type Config struct {
 	SearchBot               string
 	DisableBrowserDownloads bool
 	UserAgent               string
+	// Additional origins (ex. "https://books.example.com") allowed to open a
+	// websocket connection. The server's own host is always allowed.
+	AllowedOrigins []string
 }
 
 func New(config Config) *server {
 	return &server{
 		repository: NewRepository(),
 		config:     &config,
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
 		clients:    make(map[uuid.UUID]*Client),
 		log:        log.New(os.Stdout, "SERVER: ", log.LstdFlags|log.Lmsgprefix),
 	}
@@ -74,7 +71,6 @@ func Start(config Config) {
 	createBooksDirectory(config)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
-	router.Use(middleware.RealIP)
 	router.Use(middleware.Recoverer)
 
 	corsConfig := cors.Options{
@@ -88,52 +84,63 @@ func Start(config Config) {
 	server := New(config)
 	routes := server.registerRoutes()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	go server.startClientHub(ctx)
-	server.registerGracefulShutdown(cancel)
+	server.registerGracefulShutdown()
 	router.Mount(config.Basepath, routes)
 
 	server.log.Printf("Base Path: %s\n", config.Basepath)
-	server.log.Printf("OpenBooks is listening on port %v", config.Port)
+	server.log.Printf("OpenBooks is listening on %s", net.JoinHostPort(config.Host, config.Port))
 	server.log.Printf("Download Directory: %s\n", config.DownloadDir)
 	server.log.Printf("Open http://localhost:%v%s in your browser.", config.Port, config.Basepath)
-	server.log.Fatal(http.ListenAndServe(":"+config.Port, router))
+	server.log.Fatal(http.ListenAndServe(net.JoinHostPort(config.Host, config.Port), router))
 }
 
-// The client hub is to be run in a goroutine and handles management of
-// websocket client registrations.
-func (server *server) startClientHub(ctx context.Context) {
-	for {
-		select {
-		case client := <-server.register:
-			server.clients[client.uuid] = client
-		case client := <-server.unregister:
-			if _, ok := server.clients[client.uuid]; ok {
-				_, cancel := context.WithCancel(client.ctx)
-				close(client.send)
-				cancel()
-				delete(server.clients, client.uuid)
-			}
-		case <-ctx.Done():
-			for _, client := range server.clients {
-				_, cancel := context.WithCancel(client.ctx)
-				close(client.send)
-				cancel()
-				delete(server.clients, client.uuid)
-			}
-			return
-		}
+// addClient registers a new client. Only one client may be connected at a
+// time, so it returns false if another client is already registered.
+func (server *server) addClient(client *Client) bool {
+	server.clientsMutex.Lock()
+	defer server.clientsMutex.Unlock()
+
+	if len(server.clients) > 0 {
+		return false
+	}
+	server.clients[client.uuid] = client
+	return true
+}
+
+// removeClient unregisters a client and signals its goroutines to stop.
+func (server *server) removeClient(client *Client) {
+	server.clientsMutex.Lock()
+	defer server.clientsMutex.Unlock()
+
+	client.cancel()
+	if server.clients[client.uuid] == client {
+		delete(server.clients, client.uuid)
 	}
 }
 
-func (server *server) registerGracefulShutdown(cancel context.CancelFunc) {
+// canConnect returns false if the user is already connected or another user is
+// connected.
+func (server *server) canConnect(userId uuid.UUID) bool {
+	server.clientsMutex.RLock()
+	defer server.clientsMutex.RUnlock()
+
+	_, alreadyConnected := server.clients[userId]
+	return !alreadyConnected && len(server.clients) == 0
+}
+
+func (server *server) registerGracefulShutdown() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
 		server.log.Println("Graceful shutdown.")
-		// Close the shutdown channel. Triggering all reader/writer WS handlers to close.
-		cancel()
+		// Cancel each client. Triggering all reader/writer WS handlers to close.
+		server.clientsMutex.RLock()
+		for _, client := range server.clients {
+			client.irc.Disconnect()
+			client.cancel()
+		}
+		server.clientsMutex.RUnlock()
 		time.Sleep(time.Second)
 		os.Exit(0)
 	}()

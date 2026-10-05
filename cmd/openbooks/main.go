@@ -62,6 +62,8 @@ var desktopCmd = &cobra.Command{
 		bindGlobalServerFlags(&desktopConfig)
 		rateLimit, _ := cmd.Flags().GetInt("rate-limit")
 		ensureValidRate(rateLimit, &desktopConfig)
+		// Desktop mode is only used from this computer.
+		desktopConfig.Host = "127.0.0.1"
 		desktopConfig.DisableBrowserDownloads = true
 		desktopConfig.Basepath = "/"
 		desktopConfig.Persist = true

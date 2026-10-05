@@ -7,35 +7,19 @@ import (
 	"testing"
 )
 
-func TestSearchParser(t *testing.T) {
-	reader := strings.NewReader(sampleData)
-	results, errors := ParseSearch(reader)
-
-	if len(errors) > 1 {
-		t.Errorf("Expected 1 errors but got %d\n", len(errors))
-		for _, parseError := range errors {
-			t.Log(parseError)
-		}
-	}
-
-	if len(results) != 57 {
-		t.Errorf("Expected 57 results but got %d\n", len(results))
-	}
-}
-
 func TestSearchParserV2(t *testing.T) {
 	reader := strings.NewReader(sampleData)
 	results, errors := ParseSearchV2(reader)
 
-	if len(errors) != 1 {
-		t.Errorf("Expected 1 errors but got %d\n", len(errors))
+	if len(errors) != 0 {
+		t.Errorf("Expected 0 errors but got %d\n", len(errors))
 		for _, parseError := range errors {
 			t.Log(parseError)
 		}
 	}
 
-	if len(results) != 57 {
-		t.Errorf("Expected 57 results but got %d\n", len(results))
+	if len(results) != 59 {
+		t.Errorf("Expected 59 results but got %d\n", len(results))
 	}
 }
 
@@ -105,6 +89,30 @@ func TestSpecialCases(t *testing.T) {
 				Full:   "!FWServer %DE7B9E7F6F34% Brown, Dan - Robert Langdon 04 - Inferno - Audiobook.zip",
 			},
 		},
+		{
+			"no author",
+			"!peapod The Great Gatsby.pdf  ::INFO:: 254.73KB",
+			BookDetail{
+				Server: "peapod",
+				Author: "",
+				Title:  "The Great Gatsby",
+				Format: "pdf",
+				Size:   "254.73KB",
+				Full:   "!peapod The Great Gatsby.pdf",
+			},
+		},
+		{
+			"no author, eBook inside an archive",
+			"!DeathCookie Travis_Bagwell_Tarot_03_Inferno.epub.rar  ::INFO:: 579.5KB",
+			BookDetail{
+				Server: "DeathCookie",
+				Author: "",
+				Title:  "Travis_Bagwell_Tarot_03_Inferno",
+				Format: "epub",
+				Size:   "579.5KB",
+				Full:   "!DeathCookie Travis_Bagwell_Tarot_03_Inferno.epub.rar",
+			},
+		},
 	}
 
 	for _, input := range cases {
@@ -112,6 +120,27 @@ func TestSpecialCases(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, input.download, result)
 	}
+}
+
+// Malformed lines must return an error instead of panicking.
+func TestMalformedLines(t *testing.T) {
+	lines := []string{
+		"!",
+		"!server",
+		"!server %ABCDEF%",
+		"!server %ABCDEF%- Title.epub",
+		"!server A.txt - B",
+		"!server Author - Title",
+		"!server  ::INFO:: 1MB",
+		"!server ::INFO:: 1MB",
+	}
+
+	for _, line := range lines {
+		assert.NotPanics(t, func() { parseLineV2(line) }, line)
+	}
+
+	_, err := parseLineV2("!server Author - Title")
+	assert.Error(t, err)
 }
 
 var sampleData = `Search results from SearchBot v3.00.07 by Ook, searching dll written by Iczelion, Based on Searchbot v2.22 by Dukelupus

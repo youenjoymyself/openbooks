@@ -17,7 +17,9 @@ var serverConfig server.Config
 func init() {
 	desktopCmd.AddCommand(serverCmd)
 
+	serverCmd.Flags().StringVar(&serverConfig.Host, "host", "", "The network interface address to listen on. Defaults to all interfaces. Use 127.0.0.1 to only allow connections from this computer.")
 	serverCmd.Flags().StringVarP(&serverConfig.Port, "port", "p", "5228", "Set the local network port for browser mode.")
+	serverCmd.Flags().StringSliceVar(&serverConfig.AllowedOrigins, "allowed-origins", nil, `Additional origins allowed to use the web interface, ex. "https://books.example.com". Only needed if your reverse proxy rewrites the Host header.`)
 	serverCmd.Flags().IntP("rate-limit", "r", 10, "The number of seconds to wait between searches to reduce strain on IRC search servers. Minimum is 10 seconds.")
 	serverCmd.Flags().BoolVar(&serverConfig.DisableBrowserDownloads, "no-browser-downloads", false, "The browser won't recieve and download eBook files, but they are still saved to the defined 'dir' path.")
 	serverCmd.Flags().StringVar(&serverConfig.Basepath, "basepath", "/", `Base path where the application is accessible. For example "/openbooks/".`)
