@@ -14,10 +14,14 @@ import (
 // List of file extensions that I've encountered.
 // Some of them aren't eBooks, but they were returned
 // in previous search results.
+// When an extension is a prefix of another (azw/azw3, htm/html), the shorter
+// one must come first so the longer, more specific match wins.
 var fileTypes = [...]string{
 	"epub",
 	"mobi",
+	"azw",
 	"azw3",
+	"htm",
 	"html",
 	"rtf",
 	"pdf",
@@ -25,7 +29,6 @@ var fileTypes = [...]string{
 	"lit",
 	"cbr",
 	"doc",
-	"htm",
 	"jpg",
 	"txt",
 	"rar", // Compressed extensions should always be last 2 items
