@@ -41,6 +41,6 @@ jobs:
           draft: true
           prerelease: false
           fail_on_unmatched_files: true
-          name: Release ${{ github.ref }}
+          name: Release ${{ github.ref_name }}
           files: |
             ./build/*

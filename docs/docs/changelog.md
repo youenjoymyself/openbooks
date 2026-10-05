@@ -1,4 +1,4 @@
-# [Unreleased]
+# [v4.6.0] - 2026-10-04
 
 ## Security
 - DCC file offers are only accepted when sent directly to your nickname as a CTCP message. Previously anyone in `#ebooks` could make every connected client download a file.
