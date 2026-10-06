@@ -60,6 +60,15 @@ type DownloadRequest struct {
 type ConnectionResponse struct {
 	StatusResponse
 	Name string `json:"name"`
+	// SearchTimeout is the minimum number of seconds between searches.
+	SearchTimeout float64 `json:"searchTimeout"`
+}
+
+// RateLimitResponse rejects a search that was sent too soon after the last one
+type RateLimitResponse struct {
+	StatusResponse
+	// RetryAfter is the number of seconds until the next search is allowed.
+	RetryAfter float64 `json:"retryAfter"`
 }
 
 // SearchResponse is a response that is sent containing BookDetails objects that matched the query
@@ -76,18 +85,21 @@ type DownloadResponse struct {
 	DownloadPath string `json:"downloadPath"`
 }
 
-func newRateLimitResponse(remainingSeconds float64) StatusResponse {
+func newRateLimitResponse(remainingSeconds float64) RateLimitResponse {
 	wait := math.Round(remainingSeconds)
 	units := "seconds"
 	if wait == 1 {
 		units = "second"
 	}
 
-	return StatusResponse{
-		MessageType:      RATELIMIT,
-		NotificationType: WARNING,
-		Title:            "You are searching too frequently!",
-		Detail:           fmt.Sprintf("Please wait %v %s to submit another search.", wait, units),
+	return RateLimitResponse{
+		StatusResponse: StatusResponse{
+			MessageType:      RATELIMIT,
+			NotificationType: WARNING,
+			Title:            "You are searching too frequently!",
+			Detail:           fmt.Sprintf("Please wait %v %s to submit another search.", wait, units),
+		},
+		RetryAfter: remainingSeconds,
 	}
 }
 
@@ -105,6 +117,20 @@ func newSearchResponse(results []core.BookDetail, errors []core.ParseError) Sear
 		},
 		Books:  results,
 		Errors: errors,
+	}
+}
+
+// newSearchErrorResponse ends the client's pending search with an error and no
+// results. Empty slices are sent so the client receives [] rather than null.
+func newSearchErrorResponse(title string) SearchResponse {
+	return SearchResponse{
+		StatusResponse: StatusResponse{
+			MessageType:      SEARCH,
+			NotificationType: DANGER,
+			Title:            title,
+		},
+		Books:  []core.BookDetail{},
+		Errors: []core.ParseError{},
 	}
 }
 
@@ -131,6 +157,18 @@ func newDownloadResponse(filePath string, disableBrowserDownloads bool) Download
 	}
 
 	return response
+}
+
+// newDownloadErrorResponse ends one of the client's in-flight downloads with an
+// error. The empty DownloadPath stops the client from fetching anything.
+func newDownloadErrorResponse(title string) DownloadResponse {
+	return DownloadResponse{
+		StatusResponse: StatusResponse{
+			MessageType:      DOWNLOAD,
+			NotificationType: DANGER,
+			Title:            title,
+		},
+	}
 }
 
 func newStatusResponse(notificationType NotificationType, title string) StatusResponse {

@@ -64,7 +64,8 @@ function HistoryCard({ activeTS, item, dispatch }: Props) {
   const isActive = activeTS === item.timestamp;
   const { classes } = useSidebarButtonStyle({ isActive });
 
-  const loading = !item.results?.length && !item.errors?.length;
+  const loading = item.results === undefined;
+  const noResults = !item.results?.length && !item.errors?.length;
 
   return (
     <Menu shadow="md">
@@ -81,7 +82,7 @@ function HistoryCard({ activeTS, item, dispatch }: Props) {
                 <Loader color="brand" size="xs" />
               ) : (
                 <Badge color="brand" radius="sm" size="sm" variant="light">
-                  {`${item.results?.length} RESULTS`}
+                  {noResults ? "NO RESULTS" : `${item.results?.length} RESULTS`}
                 </Badge>
               )
             }>

@@ -29,6 +29,14 @@ export interface Response extends Omit<Notification, "timestamp"> {
 // ConnectionResponse is received after successful IRC connection
 export interface ConnectionResponse extends Response {
   name: string;
+  // Minimum number of seconds between searches.
+  searchTimeout: number;
+}
+
+// RateLimitResponse is received when a search was sent too soon.
+export interface RateLimitResponse extends Response {
+  // Seconds until the next search is allowed.
+  retryAfter: number;
 }
 
 // SearchResponse is received after search results are received and parsed.

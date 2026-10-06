@@ -28,14 +28,14 @@ func (c *Client) searchResultHandler(downloadDir string) core.HandlerFunc {
 		extractedPath, err := core.DownloadExtractDCCString(filepath.Join(downloadDir, "books"), text, nil)
 		if err != nil {
 			c.log.Println(err)
-			c.send(newErrorResponse("Error when downloading search results."))
+			c.send(newSearchErrorResponse("Error when downloading search results."))
 			return
 		}
 
 		bookResults, parseErrors, err := core.ParseSearchFile(extractedPath)
 		if err != nil {
 			c.log.Println(err)
-			c.send(newErrorResponse("Error when parsing search results."))
+			c.send(newSearchErrorResponse("Error when parsing search results."))
 			return
 		}
 
@@ -68,7 +68,7 @@ func (c *Client) bookResultHandler(downloadDir string, disableBrowserDownloads b
 		extractedPath, err := core.DownloadExtractDCCString(filepath.Join(downloadDir, "books"), text, nil)
 		if err != nil {
 			c.log.Println(err)
-			c.send(newErrorResponse("Error when downloading book."))
+			c.send(newDownloadErrorResponse("Error when downloading book."))
 			return
 		}
 
@@ -79,12 +79,12 @@ func (c *Client) bookResultHandler(downloadDir string, disableBrowserDownloads b
 
 // NoResults is called when the server returns that nothing was found for the query
 func (c *Client) noResultsHandler(_ string) {
-	c.send(newErrorResponse("No results found for the query."))
+	c.send(newSearchErrorResponse("No results found for the query."))
 }
 
 // BadServer is called when the requested download fails because the server is not available
 func (c *Client) badServerHandler(_ string) {
-	c.send(newErrorResponse("Server is not available. Try another one."))
+	c.send(newDownloadErrorResponse("Server is not available. Try another one."))
 }
 
 // SearchAccepted is called when the user's query is accepted into the search queue

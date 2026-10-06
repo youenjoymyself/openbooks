@@ -35,8 +35,8 @@ export function TextFilter({
               ? theme.colors.brand[3]
               : theme.colors.dark[3]
             : filterValue
-            ? theme.colors.brand[4]
-            : theme.colors.dark[1]
+              ? theme.colors.brand[4]
+              : theme.colors.dark[1]
       })}>
       {icon}
     </Box>

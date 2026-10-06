@@ -1,5 +1,5 @@
-import { ScrollArea, Table, Text } from "@mantine/core";
-import { useElementSize, useMergedRef, useTextSelection } from "@mantine/hooks";
+import { Button, ScrollArea, Table, Text } from "@mantine/core";
+import { useElementSize, useMergedRef } from "@mantine/hooks";
 import {
   createColumnHelper,
   flexRender,
@@ -10,32 +10,30 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { MagnifyingGlass, WarningCircle } from "phosphor-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { ParseError } from "../../state/messages";
 import { TextFilter } from "./Filters/TextFilter";
 import { useTableStyles } from "./styles";
 
 const columnHelper = createColumnHelper<ParseError>();
 
+// downloadCommand trims a raw result line to the part the download bot
+// expects: everything before ::INFO:: or the trailing file size.
+const downloadCommand = (line: string): string => {
+  const info = line.indexOf("::INFO::");
+  const command = info === -1 ? line : line.slice(0, info);
+  return command.replace(/\s+\d+(\.\d+)?\s*[KMG]i?B?\s*$/i, "").trim();
+};
+
 interface ErrorTableProps {
   errors: ParseError[];
-  setSearchQuery: (query: string) => void;
+  onUseLine: (line: string) => void;
 }
 
-export default function ErrorTable({
-  errors,
-  setSearchQuery
-}: ErrorTableProps) {
-  const selection = useTextSelection();
-  const selectionText = selection?.toString() ?? "";
-
-  useEffect(() => {
-    setSearchQuery(selectionText);
-  }, [selectionText]);
-
+export default function ErrorTable({ errors, onUseLine }: ErrorTableProps) {
   const { classes, cx, theme } = useTableStyles();
   const { ref: elementSizeRef, height, width } = useElementSize();
-  const virtualizerRef = useRef();
+  const virtualizerRef = useRef<HTMLDivElement>(null);
   const mergedRef = useMergedRef(elementSizeRef, virtualizerRef);
 
   const columns = useMemo(() => {
@@ -51,7 +49,7 @@ export default function ErrorTable({
           />
         ),
         cell: (props) => <code style={{ margin: 0 }}>{props.getValue()}</code>,
-        size: cols(9),
+        size: cols(8),
         enableColumnFilter: true
       }),
       columnHelper.accessor("error", {
@@ -65,9 +63,24 @@ export default function ErrorTable({
         ),
         size: cols(3),
         enableColumnFilter: false
+      }),
+      columnHelper.display({
+        header: "Download",
+        size: cols(1),
+        cell: ({ row }) => (
+          <Button
+            compact
+            size="xs"
+            radius="sm"
+            variant="default"
+            sx={{ fontWeight: "normal" }}
+            onClick={() => onUseLine(downloadCommand(row.original.line))}>
+            Use
+          </Button>
+        )
       })
     ];
-  }, [width]);
+  }, [width, onUseLine]);
 
   const table = useReactTable({
     data: errors,
@@ -101,8 +114,8 @@ export default function ErrorTable({
     <>
       <Text size="sm" color="dimmed" sx={{ width: "100%" }} mb={4}>
         These results could not be parsed to due to their non-standard format.
-        To download, copy the line up to the <code>::INFO::</code> or file size
-        at the end and paste into the text box above.
+        To download one, press <b>Use</b> to copy it into the text box above,
+        check it, then press Download.
       </Text>
 
       <ScrollArea

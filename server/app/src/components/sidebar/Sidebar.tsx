@@ -3,6 +3,7 @@ import {
   Burger,
   createStyles,
   Group,
+  Loader,
   MediaQuery,
   Navbar,
   SegmentedControl,
@@ -123,7 +124,7 @@ export default function Sidebar() {
       <Navbar.Section className={classes.footer} p="sm">
         <Group position="apart" noWrap>
           <Group>
-            {username ? (
+            {connected && username ? (
               <>
                 <IdentificationBadge size={24} />
                 <Text
@@ -136,6 +137,13 @@ export default function Sidebar() {
                     whiteSpace: "nowrap"
                   }}>
                   {username}
+                </Text>
+              </>
+            ) : !connected ? (
+              <>
+                <Loader size="xs" />
+                <Text size="sm" color="dimmed">
+                  Reconnecting…
                 </Text>
               </>
             ) : (

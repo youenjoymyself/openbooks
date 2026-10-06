@@ -168,3 +168,30 @@ func TestSingleClient(t *testing.T) {
 	s.removeClient(first)
 	assert.True(t, s.addClient(second))
 }
+
+// Failures are sent under the type of the request that failed, so the client
+// can end its pending search or download.
+func TestFailureResponses(t *testing.T) {
+	search, err := json.Marshal(newSearchErrorResponse("No results found for the query."))
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":2,"appearance":3,"title":"No results found for the query.","detail":"","books":[],"errors":[]}`, string(search))
+
+	download := newDownloadErrorResponse("Server is not available. Try another one.")
+	assert.Equal(t, DOWNLOAD, download.MessageType)
+	assert.Equal(t, DANGER, download.NotificationType)
+	assert.Empty(t, download.DownloadPath)
+}
+
+func TestRateLimitResponse(t *testing.T) {
+	s := testServer(t, Config{SearchTimeout: time.Minute})
+	c := testClient()
+
+	c.sendSearchRequest(&SearchRequest{Query: "first"}, s)
+	<-c.outbox
+	c.sendSearchRequest(&SearchRequest{Query: "second"}, s)
+
+	limited, ok := (<-c.outbox).(RateLimitResponse)
+	require.True(t, ok, "second search is rate limited")
+	assert.Equal(t, RATELIMIT, limited.MessageType)
+	assert.InDelta(t, 60, limited.RetryAfter, 1)
+}

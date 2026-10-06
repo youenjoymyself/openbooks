@@ -81,21 +81,24 @@ export default function NotificationDrawer() {
       ) : (
         <Stack
           spacing="xs"
-          style={{ overflow: "scroll", height: "calc(100% - 44px)" }}>
+          style={{ overflow: "auto", height: "calc(100% - 44px)" }}>
           <AnimatePresence mode="popLayout">
             {notifications.map((notif) => (
               <motion.div {...defaultAnimation} key={notif.timestamp}>
                 <Tooltip
                   position="left"
-                  label={new Date(notif.timestamp).toLocaleTimeString("en-US", {
-                    timeStyle: "medium"
-                  })}>
+                  label={new Date(notif.timestamp).toLocaleTimeString(
+                    undefined,
+                    {
+                      timeStyle: "medium"
+                    }
+                  )}>
                   <Text
                     color="dimmed"
                     size="xs"
                     weight={500}
                     style={{ marginBottom: "0.25rem" }}>
-                    {new Date(notif.timestamp).toLocaleTimeString("en-US", {
+                    {new Date(notif.timestamp).toLocaleTimeString(undefined, {
                       timeStyle: "short"
                     })}
                   </Text>
