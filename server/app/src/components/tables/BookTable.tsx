@@ -1,5 +1,6 @@
 import {
   Button,
+  Group,
   Indicator,
   Loader,
   ScrollArea,
@@ -16,12 +17,15 @@ import {
   getFacetedRowModel,
   getFacetedUniqueValues,
   getFilteredRowModel,
+  getSortedRowModel,
   Row,
+  SortingFn,
+  SortingState,
   useReactTable
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { MagnifyingGlass, User } from "phosphor-react";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { useGetServersQuery } from "../../state/api";
 import { BookDetail } from "../../state/messages";
@@ -32,6 +36,7 @@ import FacetFilter, {
   StandardFacetEntry
 } from "./Filters/FacetFilter";
 import { TextFilter } from "./Filters/TextFilter";
+import { SortToggle } from "./SortToggle";
 import { useTableStyles } from "./styles";
 
 const columnHelper = createColumnHelper<BookDetail>();
@@ -45,6 +50,29 @@ const stringInArray: FilterFn<any> = (
 
   return filterValue.includes(row.getValue<string>(columnId));
 };
+
+const sizeUnits: Record<string, number> = {
+  "": 1,
+  "K": 1024,
+  "M": 1024 ** 2,
+  "G": 1024 ** 3,
+  "T": 1024 ** 4
+};
+
+// parseSize converts sizes like "8.44MB" or "775.69 KiB" to bytes. Returns -1
+// when the size is missing or unparseable.
+const parseSize = (size: string): number => {
+  const match = /^\s*([\d.,]+)\s*([KMGT]?)i?B?\s*$/i.exec(size ?? "");
+  if (!match) return -1;
+  const value = parseFloat(match[1].replace(/,/g, ""));
+  return isNaN(value) ? -1 : value * sizeUnits[match[2].toUpperCase()];
+};
+
+const bySize: SortingFn<BookDetail> = (a, b, columnId) =>
+  parseSize(a.getValue(columnId)) - parseSize(b.getValue(columnId));
+
+// withTitle shows the full text on hover, since cells are clamped to one line.
+const withTitle = (value: string) => <span title={value}>{value}</span>;
 
 interface BookTableProps {
   books: BookDetail[];
@@ -106,6 +134,7 @@ export default function BookTable({ books }: BookTableProps) {
             table={props.table}
           />
         ),
+        cell: (props) => withTitle(props.getValue()),
         size: cols(2),
         enableColumnFilter: false
       }),
@@ -118,6 +147,7 @@ export default function BookTable({ books }: BookTableProps) {
             table={props.table}
           />
         ),
+        cell: (props) => withTitle(props.getValue()),
         minSize: 20,
         size: cols(6),
         enableColumnFilter: false
@@ -138,12 +168,14 @@ export default function BookTable({ books }: BookTableProps) {
       columnHelper.accessor("size", {
         header: "Size",
         size: cols(1),
-        enableColumnFilter: false
+        enableColumnFilter: false,
+        sortingFn: bySize
       }),
       columnHelper.display({
         header: "Download",
         size: cols(1),
         enableColumnFilter: false,
+        enableSorting: false,
         cell: ({ row }) => (
           <DownloadButton book={row.original.full}></DownloadButton>
         )
@@ -151,18 +183,24 @@ export default function BookTable({ books }: BookTableProps) {
     ];
   }, [width, servers]);
 
+  const [sorting, setSorting] = useState<SortingState>([]);
+
   const table = useReactTable({
     data: books,
     columns: columns,
+    state: { sorting },
+    onSortingChange: setSorting,
     enableFilters: true,
     columnResizeMode: "onChange",
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
     getFacetedRowModel: getFacetedRowModel(),
     getFacetedUniqueValues: getFacetedUniqueValues()
   });
 
   const { rows: tableRows } = table.getRowModel();
+  const filteredCount = table.getFilteredRowModel().rows.length;
 
   const rowVirtualizer = useVirtualizer({
     count: tableRows.length,
@@ -182,75 +220,87 @@ export default function BookTable({ books }: BookTableProps) {
       : 0;
 
   return (
-    <ScrollArea
-      viewportRef={mergedRef}
-      className={classes.container}
-      type="hover"
-      scrollbarSize={6}
-      styles={{ thumb: { ["&::before"]: { minWidth: 4 } } }}
-      offsetScrollbars={false}>
-      <Table highlightOnHover verticalSpacing="sm" fontSize="xs">
-        <thead className={classes.head}>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <th
-                  key={header.id}
-                  className={classes.headerCell}
-                  style={{
-                    width: header.getSize()
-                  }}>
-                  {flexRender(
-                    header.column.columnDef.header,
-                    header.getContext()
-                  )}
-                  <div
-                    onMouseDown={header.getResizeHandler()}
-                    onTouchStart={header.getResizeHandler()}
-                    className={cx(classes.resizer, {
-                      ["isResizing"]: header.column.getIsResizing()
-                    })}
-                  />
-                </th>
-              ))}
-            </tr>
-          ))}
-        </thead>
-        <tbody>
-          {paddingTop > 0 && (
-            <tr>
-              <td style={{ height: `${paddingTop}px` }} />
-            </tr>
-          )}
-          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const row = tableRows[
-              virtualRow.index
-            ] as unknown as Row<BookDetail>;
-            return (
-              <tr key={row.id} style={{ height: 50 }}>
-                {row.getVisibleCells().map((cell) => {
-                  return (
-                    <td key={cell.id}>
-                      <Text lineClamp={1} color="dark">
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
-                        )}
-                      </Text>
-                    </td>
-                  );
-                })}
+    <>
+      {filteredCount !== books.length && (
+        <Text size="sm" color="dimmed" sx={{ width: "100%" }} mb={4}>
+          Showing {filteredCount} of {books.length} results.
+        </Text>
+      )}
+      <ScrollArea
+        viewportRef={mergedRef}
+        className={classes.container}
+        type="hover"
+        scrollbarSize={6}
+        styles={{ thumb: { ["&::before"]: { minWidth: 4 } } }}
+        offsetScrollbars={false}>
+        <Table highlightOnHover verticalSpacing="sm" fontSize="xs">
+          <thead className={classes.head}>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th
+                    key={header.id}
+                    className={classes.headerCell}
+                    style={{
+                      width: header.getSize()
+                    }}>
+                    <Group noWrap spacing={4}>
+                      {flexRender(
+                        header.column.columnDef.header,
+                        header.getContext()
+                      )}
+                      {header.column.getCanSort() && (
+                        <SortToggle column={header.column} />
+                      )}
+                    </Group>
+                    <div
+                      onMouseDown={header.getResizeHandler()}
+                      onTouchStart={header.getResizeHandler()}
+                      className={cx(classes.resizer, {
+                        ["isResizing"]: header.column.getIsResizing()
+                      })}
+                    />
+                  </th>
+                ))}
               </tr>
-            );
-          })}
-          {paddingBottom > 0 && (
-            <tr>
-              <td style={{ height: `${paddingBottom}px` }} />
-            </tr>
-          )}
-        </tbody>
-      </Table>
-    </ScrollArea>
+            ))}
+          </thead>
+          <tbody>
+            {paddingTop > 0 && (
+              <tr>
+                <td style={{ height: `${paddingTop}px` }} />
+              </tr>
+            )}
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const row = tableRows[
+                virtualRow.index
+              ] as unknown as Row<BookDetail>;
+              return (
+                <tr key={row.id} style={{ height: 50 }}>
+                  {row.getVisibleCells().map((cell) => {
+                    return (
+                      <td key={cell.id}>
+                        <Text lineClamp={1} color="dark">
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext()
+                          )}
+                        </Text>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+            {paddingBottom > 0 && (
+              <tr>
+                <td style={{ height: `${paddingBottom}px` }} />
+              </tr>
+            )}
+          </tbody>
+        </Table>
+      </ScrollArea>
+    </>
   );
 }
 
