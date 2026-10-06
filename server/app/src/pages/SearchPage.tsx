@@ -41,8 +41,8 @@ const useStyles = createStyles(
             ? theme.colors.dark[8]
             : theme.colors.dark[2]
           : errorMode
-          ? theme.colors.white
-          : theme.colors.dark[3],
+            ? theme.colors.white
+            : theme.colors.dark[3],
       "&:hover": {
         backgroundColor:
           theme.colorScheme === "dark"
@@ -50,8 +50,8 @@ const useStyles = createStyles(
               ? theme.colors.brand[3]
               : theme.colors.dark[7]
             : errorMode
-            ? theme.colors.brand[5]
-            : theme.colors.gray[1]
+              ? theme.colors.brand[5]
+              : theme.colors.gray[1]
       }
     }
   })
@@ -173,8 +173,8 @@ export default function SearchPage() {
             {errorMode
               ? "Download"
               : waitSeconds > 0
-              ? `Search (${waitSeconds}s)`
-              : "Search"}
+                ? `Search (${waitSeconds}s)`
+                : "Search"}
           </Button>
         </Group>
       </form>

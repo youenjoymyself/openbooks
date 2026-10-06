@@ -83,7 +83,7 @@ export default function BookTable({ books }: BookTableProps) {
   const { data: servers } = useGetServersQuery(null);
 
   const { ref: elementSizeRef, height, width } = useElementSize();
-  const virtualizerRef = useRef();
+  const virtualizerRef = useRef<HTMLDivElement>(null);
   const mergedRef = useMergedRef(elementSizeRef, virtualizerRef);
 
   const columns = useMemo(() => {

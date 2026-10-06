@@ -14,8 +14,8 @@ export function SortToggle({ column }: SortToggleProps) {
     sorted === "asc"
       ? "Sorted ascending"
       : sorted === "desc"
-      ? "Sorted descending"
-      : "Sort";
+        ? "Sorted descending"
+        : "Sort";
 
   return (
     <Tooltip label={label} openDelay={500}>

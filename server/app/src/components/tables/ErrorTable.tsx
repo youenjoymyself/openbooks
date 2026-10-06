@@ -33,7 +33,7 @@ interface ErrorTableProps {
 export default function ErrorTable({ errors, onUseLine }: ErrorTableProps) {
   const { classes, cx, theme } = useTableStyles();
   const { ref: elementSizeRef, height, width } = useElementSize();
-  const virtualizerRef = useRef();
+  const virtualizerRef = useRef<HTMLDivElement>(null);
   const mergedRef = useMergedRef(elementSizeRef, virtualizerRef);
 
   const columns = useMemo(() => {

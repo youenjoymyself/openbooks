@@ -13,7 +13,7 @@ import {
 import { Column, Table } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { CaretDown, MagnifyingGlass } from "phosphor-react";
-import { CSSProperties, useRef, useState } from "react";
+import { CSSProperties, useState } from "react";
 import { useGetServersQuery } from "../../../state/api";
 
 const stringContains = (first: string, second: string): boolean => {
@@ -74,11 +74,13 @@ export default function FacetFilter({
   const filteredOptions = options.filter((x) => stringContains(x, filter));
 
   const { classes, theme } = useStyles();
-  const listRef = useRef<HTMLDivElement>(null);
+  // Kept in state so the popover mounting the list re-renders this component,
+  // which is when the virtualizer attaches to its scroll element.
+  const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
 
   const rowVirtualizer = useVirtualizer({
     count: filteredOptions.length,
-    getScrollElement: () => listRef.current,
+    getScrollElement: () => listElement,
     estimateSize: () => 30,
     overscan: 10
   });
@@ -91,8 +93,8 @@ export default function FacetFilter({
         ? "brand.2"
         : "dark.0"
       : filterValue.length > 0
-      ? "brand.4"
-      : "gray.7";
+        ? "brand.4"
+        : "gray.7";
 
   return (
     <Popover
@@ -157,7 +159,7 @@ export default function FacetFilter({
           }
         />
 
-        <div ref={listRef} className={classes.container} data-autofocus>
+        <div ref={setListElement} className={classes.container} data-autofocus>
           <div
             style={{
               height: `${rowVirtualizer.getTotalSize()}px`,
