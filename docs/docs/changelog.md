@@ -1,3 +1,22 @@
+# [v4.6.2] - 2026-10-05
+
+## Added
+- Sort search results by any column. Size sorts by the actual file size.
+- "Showing X of Y results" appears while filters hide rows, and hovering a truncated title or author shows the full text.
+- The Search button counts down until the next search is allowed.
+- Press `/` to focus the search box.
+- Parse-error results have a **Use** button that copies the download command into the search box.
+
+## Fixed
+- The search box no longer stays disabled after a search fails or returns no results.
+- Failed downloads clear their spinner and can be retried. Finished downloads clear the spinner on the right row.
+- The web UI reconnects automatically when the connection to the OpenBooks server drops.
+- Selecting text in the parse-errors view no longer overwrites the search box.
+- Dates in the web UI use the browser's locale.
+
+## Changed
+- Updated the web UI's build tooling (Vite 8, TypeScript 5.9) and removed unused dependencies.
+
 # [v4.6.1] - 2026-10-05
 
 ## Fixed
