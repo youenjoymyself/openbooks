@@ -11,7 +11,7 @@ import {
   Title
 } from "@mantine/core";
 import { MagnifyingGlass, Sidebar, Warning } from "phosphor-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import image from "../assets/reading.svg";
 import BookTable from "../components/tables/BookTable";
 import ErrorTable from "../components/tables/ErrorTable";
@@ -63,6 +63,7 @@ export default function SearchPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showErrors, setShowErrors] = useState(false);
+  const searchInput = useRef<HTMLInputElement>(null);
 
   const hasErrors = (activeItem?.errors ?? []).length > 0;
   const errorMode = showErrors && activeItem;
@@ -102,7 +103,10 @@ export default function SearchPage() {
     () => (
       <ErrorTable
         errors={activeItem?.errors ?? []}
-        setSearchQuery={setSearchQuery}
+        onUseLine={(line) => {
+          setSearchQuery(line);
+          searchInput.current?.focus();
+        }}
       />
     ),
     [activeItem?.errors]
@@ -124,9 +128,9 @@ export default function SearchPage() {
             </ActionIcon>
           )}
           <TextInput
+            ref={searchInput}
             className={classes.wFull}
             variant="filled"
-            disabled={activeItem !== null && !activeItem.results}
             value={searchQuery}
             onChange={(e: any) => setSearchQuery(e.target.value)}
             placeholder={

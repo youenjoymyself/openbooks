@@ -3,6 +3,7 @@ import {
   Burger,
   createStyles,
   Group,
+  Loader,
   MediaQuery,
   Navbar,
   SegmentedControl,
@@ -15,7 +16,6 @@ import {
   BellSimple,
   IdentificationBadge,
   MoonStars,
-  Plugs,
   Sidebar as SidebarIcon,
   Sun
 } from "phosphor-react";
@@ -123,7 +123,7 @@ export default function Sidebar() {
       <Navbar.Section className={classes.footer} p="sm">
         <Group position="apart" noWrap>
           <Group>
-            {username ? (
+            {connected && username ? (
               <>
                 <IdentificationBadge size={24} />
                 <Text
@@ -140,8 +140,10 @@ export default function Sidebar() {
               </>
             ) : (
               <>
-                <Plugs size={24} />
-                <Text size="sm">Not connected.</Text>
+                <Loader size="xs" />
+                <Text size="sm" color="dimmed">
+                  Reconnecting…
+                </Text>
               </>
             )}
           </Group>

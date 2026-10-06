@@ -19,6 +19,7 @@ import {
 import { addNotification } from "./notificationSlice";
 import {
   removeInFlightDownload,
+  resetPendingRequests,
   sendMessage,
   setConnectionState,
   setSearchResults,
@@ -27,23 +28,46 @@ import {
 import { AppDispatch, RootState } from "./store";
 import { displayNotification, downloadFile } from "./util";
 
+const minRetryDelay = 1_000;
+const maxRetryDelay = 30_000;
+
 // Web socket redux middleware.
 // Listens to socket and dispatches handlers.
 // Handles send_message actions by sending to socket.
+// Reconnects with exponential backoff when the socket closes.
 export const websocketConn =
   (wsUrl: string): Middleware =>
   ({ dispatch, getState }: MiddlewareAPI<AppDispatch, RootState>) => {
-    const socket = new WebSocket(wsUrl);
+    let socket: WebSocket;
+    let retryDelay = minRetryDelay;
+    let outageNotified = false;
 
-    socket.onopen = () => onOpen(dispatch);
-    socket.onclose = () => onClose(dispatch);
-    socket.onmessage = (message) => route(dispatch, message);
-    socket.onerror = (event) =>
-      displayNotification({
-        appearance: NotificationType.DANGER,
-        title: "Unable to connect to server.",
-        timestamp: new Date().getTime()
-      });
+    const connect = () => {
+      socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        retryDelay = minRetryDelay;
+        outageNotified = false;
+        onOpen(dispatch);
+      };
+      socket.onclose = () => {
+        onClose(dispatch);
+        // Only notify once per outage, not on every retry.
+        if (!outageNotified) {
+          outageNotified = true;
+          displayNotification({
+            appearance: NotificationType.DANGER,
+            title: "Unable to connect to server. Reconnecting…",
+            timestamp: new Date().getTime()
+          });
+        }
+        setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, maxRetryDelay);
+      };
+      socket.onmessage = (message) => route(dispatch, message);
+    };
+
+    connect();
 
     return (next: Dispatch<AnyAction>) => (action: PayloadAction<any>) => {
       // Send Message action? Send data to the socket.
@@ -53,7 +77,7 @@ export const websocketConn =
         } else {
           displayNotification({
             appearance: NotificationType.WARNING,
-            title: "Server connection closed. Reload page.",
+            title: "Not connected to the server. Reconnecting…",
             timestamp: new Date().getTime()
           });
         }
@@ -72,6 +96,7 @@ const onOpen = (dispatch: AppDispatch): void => {
 const onClose = (dispatch: AppDispatch): void => {
   console.log("WebSocket closed.");
   dispatch(setConnectionState(false));
+  dispatch(resetPendingRequests());
 };
 
 const route = (dispatch: AppDispatch, msg: MessageEvent<any>): void => {
@@ -92,11 +117,18 @@ const route = (dispatch: AppDispatch, msg: MessageEvent<any>): void => {
       case MessageType.SEARCH:
         dispatch(setSearchResults(response as SearchResponse));
         return notification;
-      case MessageType.DOWNLOAD:
-        downloadFile((response as DownloadResponse)?.downloadPath);
-        dispatch(openbooksApi.util.invalidateTags(["books"]));
-        dispatch(removeInFlightDownload());
+      case MessageType.DOWNLOAD: {
+        // Failures arrive as DOWNLOAD messages too, without a file.
+        const succeeded = response.appearance === NotificationType.SUCCESS;
+        if (succeeded) {
+          downloadFile((response as DownloadResponse).downloadPath);
+          dispatch(openbooksApi.util.invalidateTags(["books"]));
+        }
+        dispatch(
+          removeInFlightDownload(succeeded ? response.detail : undefined)
+        );
         return notification;
+      }
       case MessageType.RATELIMIT:
         dispatch(deleteHistoryItem());
         return notification;

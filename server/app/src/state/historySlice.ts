@@ -15,9 +15,15 @@ interface HistoryState {
   items: HistoryItem[];
 }
 
+// A search is pending until its results (or failure) arrive.
+const isPending = (item: HistoryItem): boolean => item.results === undefined;
+
 const loadState = (): HistoryItem[] => {
   try {
-    return JSON.parse(localStorage.getItem("history")!) ?? [];
+    const items: HistoryItem[] =
+      JSON.parse(localStorage.getItem("history")!) ?? [];
+    // Searches from a previous session can never receive their results.
+    return items.filter((item) => !isPending(item));
   } catch (err) {
     return [];
   }
@@ -37,10 +43,16 @@ export const historySlice = createSlice({
     deleteByTimetamp: (state, action: PayloadAction<number>) => {
       state.items = state.items.filter((x) => x.timestamp !== action.payload);
     },
+    dropPendingHistoryItems: (state) => {
+      state.items = state.items.filter((item) => !isPending(item));
+    },
     updateHistoryItem: (state, action: PayloadAction<HistoryItem>) => {
       var pendingItemIndex = state.items.findIndex(
         (x) => x.timestamp === action.payload.timestamp
       );
+      if (pendingItemIndex === -1) {
+        return;
+      }
       state.items = [
         ...state.items.slice(0, pendingItemIndex),
         action.payload,
@@ -73,11 +85,19 @@ const deleteHistoryItem = createAsyncThunk<
   dispatch(historySlice.actions.deleteByTimetamp(timeStamp));
 });
 
-const { addHistoryItem, updateHistoryItem } = historySlice.actions;
+const { addHistoryItem, updateHistoryItem, dropPendingHistoryItems } =
+  historySlice.actions;
 
 const selectHistory = (state: RootState) => state.history.items;
 
 export type { HistoryItem };
-export { deleteHistoryItem, addHistoryItem, updateHistoryItem, selectHistory };
+export {
+  deleteHistoryItem,
+  addHistoryItem,
+  updateHistoryItem,
+  dropPendingHistoryItems,
+  selectHistory,
+  isPending
+};
 
 export default historySlice.reducer;

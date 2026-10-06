@@ -108,6 +108,20 @@ func newSearchResponse(results []core.BookDetail, errors []core.ParseError) Sear
 	}
 }
 
+// newSearchErrorResponse ends the client's pending search with an error and no
+// results. Empty slices are sent so the client receives [] rather than null.
+func newSearchErrorResponse(title string) SearchResponse {
+	return SearchResponse{
+		StatusResponse: StatusResponse{
+			MessageType:      SEARCH,
+			NotificationType: DANGER,
+			Title:            title,
+		},
+		Books:  []core.BookDetail{},
+		Errors: []core.ParseError{},
+	}
+}
+
 func newDownloadResponse(filePath string, disableBrowserDownloads bool) DownloadResponse {
 	// If we don't want to autodownload the file, show the user the path to the file
 	// otherwise just show file name.
@@ -131,6 +145,18 @@ func newDownloadResponse(filePath string, disableBrowserDownloads bool) Download
 	}
 
 	return response
+}
+
+// newDownloadErrorResponse ends one of the client's in-flight downloads with an
+// error. The empty DownloadPath stops the client from fetching anything.
+func newDownloadErrorResponse(title string) DownloadResponse {
+	return DownloadResponse{
+		StatusResponse: StatusResponse{
+			MessageType:      DOWNLOAD,
+			NotificationType: DANGER,
+			Title:            title,
+		},
+	}
 }
 
 func newStatusResponse(notificationType NotificationType, title string) StatusResponse {

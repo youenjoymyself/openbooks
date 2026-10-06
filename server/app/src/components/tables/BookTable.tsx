@@ -21,7 +21,7 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { MagnifyingGlass, User } from "phosphor-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { useSelector } from "react-redux";
 import { useGetServersQuery } from "../../state/api";
 import { BookDetail } from "../../state/messages";
@@ -257,16 +257,15 @@ export default function BookTable({ books }: BookTableProps) {
 function DownloadButton({ book }: { book: string }) {
   const dispatch = useAppDispatch();
 
-  const [clicked, setClicked] = useState(false);
   const isInFlight = useSelector((state: RootState) =>
     state.state.inFlightDownloads.includes(book)
   );
 
-  // Prevent hitting the same button multiple times
+  // Prevent requesting the same book twice. Re-enabled once the download
+  // finishes or fails, so failed downloads can be retried.
   const onClick = () => {
-    if (clicked) return;
+    if (isInFlight) return;
     dispatch(sendDownload(book));
-    setClicked(true);
   };
 
   return (

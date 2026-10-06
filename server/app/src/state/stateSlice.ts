@@ -4,7 +4,13 @@ import {
   createSlice,
   PayloadAction
 } from "@reduxjs/toolkit";
-import { addHistoryItem, HistoryItem, updateHistoryItem } from "./historySlice";
+import {
+  addHistoryItem,
+  dropPendingHistoryItems,
+  HistoryItem,
+  isPending,
+  updateHistoryItem
+} from "./historySlice";
 import { MessageType, SearchResponse } from "./messages";
 import { AppDispatch, RootState } from "./store";
 
@@ -18,7 +24,12 @@ interface AppState {
 
 const loadActive = (): HistoryItem | null => {
   try {
-    return JSON.parse(localStorage.getItem("active")!) ?? null;
+    const active: HistoryItem | null = JSON.parse(
+      localStorage.getItem("active")!
+    );
+    // A search from a previous session can never receive its results.
+    // (isPending isn't usable here: this runs during the circular import.)
+    return active?.results !== undefined ? active : null;
   } catch (err) {
     return null;
   }
@@ -48,14 +59,33 @@ const stateSlice = createSlice({
     addInFlightDownload(state, action: PayloadAction<string>) {
       state.inFlightDownloads.push(action.payload);
     },
-    removeInFlightDownload(state) {
-      state.inFlightDownloads.shift();
+    // Remove the in-flight download that produced fileName. Falls back to the
+    // oldest download when fileName is missing (failures don't name the book)
+    // or doesn't appear in any requested book string.
+    removeInFlightDownload(state, action: PayloadAction<string | undefined>) {
+      const index = state.inFlightDownloads.findIndex((book) =>
+        matchesDownload(book, action.payload)
+      );
+      state.inFlightDownloads.splice(Math.max(index, 0), 1);
+    },
+    clearInFlightDownloads(state) {
+      state.inFlightDownloads = [];
     },
     toggleSidebar(state) {
       state.isSidebarOpen = !state.isSidebarOpen;
     }
   }
 });
+
+// matchesDownload reports whether the requested book string produced the
+// received file. The extension is ignored because archives are extracted.
+const matchesDownload = (book: string, fileName?: string): boolean => {
+  const base = fileName
+    ?.split(/[\\/]/)
+    .pop()
+    ?.replace(/\.[^.]+$/, "");
+  return !!base && book.includes(base);
+};
 
 // Action that sends a websocket message to the server
 const sendMessage = createAction("socket/send_message", (message: any) => ({
@@ -104,21 +134,40 @@ const setSearchResults = createAsyncThunk<
 >(
   "state/set_search_results",
   async ({ books, errors }: SearchResponse, { dispatch, getState }) => {
-    const activeItem = getState().state.activeItem;
-    if (activeItem === null) {
+    // IRC answers searches in order, so results belong to the oldest pending
+    // search. History is stored newest first.
+    const pending = getState().history.items.filter(isPending).at(-1);
+    if (pending === undefined) {
       return;
     }
     const updatedItem: HistoryItem = {
-      query: activeItem.query,
-      timestamp: activeItem.timestamp,
-      results: books,
-      errors: errors
+      query: pending.query,
+      timestamp: pending.timestamp,
+      results: books ?? [],
+      errors: errors ?? []
     };
 
-    dispatch(setActiveItem(updatedItem));
+    if (getState().state.activeItem?.timestamp === pending.timestamp) {
+      dispatch(setActiveItem(updatedItem));
+    }
     dispatch(updateHistoryItem(updatedItem));
   }
 );
+
+// Drop everything waiting on the IRC session after the websocket closes. The
+// next connection gets a new IRC session that can't answer them.
+const resetPendingRequests = createAsyncThunk<
+  void,
+  void,
+  { dispatch: AppDispatch; state: RootState }
+>("state/reset_pending", (_, { dispatch, getState }) => {
+  const activeItem = getState().state.activeItem;
+  if (activeItem && isPending(activeItem)) {
+    dispatch(setActiveItem(null));
+  }
+  dispatch(dropPendingHistoryItems());
+  dispatch(clearInFlightDownloads());
+});
 
 export const {
   setActiveItem,
@@ -126,9 +175,17 @@ export const {
   setUsername,
   addInFlightDownload,
   removeInFlightDownload,
+  clearInFlightDownloads,
   toggleSidebar
 } = stateSlice.actions;
 
-export { stateSlice, sendMessage, sendDownload, sendSearch, setSearchResults };
+export {
+  stateSlice,
+  sendMessage,
+  sendDownload,
+  sendSearch,
+  setSearchResults,
+  resetPendingRequests
+};
 
 export default stateSlice.reducer;
