@@ -20,6 +20,10 @@ interface AppState {
   activeItem: HistoryItem | null;
   username?: string;
   inFlightDownloads: string[];
+  // Minimum seconds between searches, sent by the server on connect.
+  searchTimeout: number;
+  // Epoch milliseconds when the server will accept the next search.
+  nextSearchAt: number;
 }
 
 const loadActive = (): HistoryItem | null => {
@@ -40,7 +44,9 @@ const initialState: AppState = {
   isSidebarOpen: true,
   activeItem: loadActive(),
   username: undefined,
-  inFlightDownloads: []
+  inFlightDownloads: [],
+  searchTimeout: 0,
+  nextSearchAt: 0
 };
 
 const stateSlice = createSlice({
@@ -70,6 +76,13 @@ const stateSlice = createSlice({
     },
     clearInFlightDownloads(state) {
       state.inFlightDownloads = [];
+    },
+    setSearchTimeout(state, action: PayloadAction<number>) {
+      state.searchTimeout = action.payload;
+    },
+    // Block searches for the given number of seconds.
+    delayNextSearch(state, action: PayloadAction<number>) {
+      state.nextSearchAt = Date.now() + action.payload * 1000;
     },
     toggleSidebar(state) {
       state.isSidebarOpen = !state.isSidebarOpen;
@@ -106,26 +119,29 @@ const sendDownload = createAsyncThunk(
 );
 
 // Send a search to the server. Add to query history and set loading.
-const sendSearch = createAsyncThunk(
-  "state/send_sendSearch",
-  (queryString: string, { dispatch }) => {
-    // Send the books search query to the server
-    dispatch(
-      sendMessage({
-        type: MessageType.SEARCH,
-        payload: {
-          query: queryString
-        }
-      })
-    );
+const sendSearch = createAsyncThunk<
+  void,
+  string,
+  { dispatch: AppDispatch; state: RootState }
+>("state/send_sendSearch", (queryString: string, { dispatch, getState }) => {
+  // Send the books search query to the server
+  dispatch(
+    sendMessage({
+      type: MessageType.SEARCH,
+      payload: {
+        query: queryString
+      }
+    })
+  );
 
-    const timestamp = new Date().getTime();
+  dispatch(delayNextSearch(getState().state.searchTimeout));
 
-    // Add query to item history.
-    dispatch(addHistoryItem({ query: queryString, timestamp }));
-    dispatch(setActiveItem({ query: queryString, timestamp: timestamp }));
-  }
-);
+  const timestamp = new Date().getTime();
+
+  // Add query to item history.
+  dispatch(addHistoryItem({ query: queryString, timestamp }));
+  dispatch(setActiveItem({ query: queryString, timestamp: timestamp }));
+});
 
 const setSearchResults = createAsyncThunk<
   Promise<void>,
@@ -176,6 +192,8 @@ export const {
   addInFlightDownload,
   removeInFlightDownload,
   clearInFlightDownloads,
+  setSearchTimeout,
+  delayNextSearch,
   toggleSidebar
 } = stateSlice.actions;
 

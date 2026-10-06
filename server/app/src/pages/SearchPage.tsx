@@ -5,6 +5,7 @@ import {
   createStyles,
   Group,
   Image,
+  Kbd,
   MediaQuery,
   Stack,
   TextInput,
@@ -64,12 +65,31 @@ export default function SearchPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showErrors, setShowErrors] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
+  const waitSeconds = useSearchCountdown();
+
+  // Press "/" anywhere outside a text field to focus the search box.
+  useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey)
+        return;
+      if (
+        target.isContentEditable ||
+        ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)
+      )
+        return;
+      event.preventDefault();
+      searchInput.current?.focus();
+    };
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
+  }, []);
 
   const hasErrors = (activeItem?.errors ?? []).length > 0;
   const errorMode = showErrors && activeItem;
   const validInput = errorMode
     ? searchQuery.startsWith("!")
-    : searchQuery !== "";
+    : searchQuery !== "" && waitSeconds === 0;
 
   const { classes, theme } = useStyles({ errorMode: !!errorMode });
 
@@ -139,6 +159,7 @@ export default function SearchPage() {
             radius="md"
             type="search"
             icon={<MagnifyingGlass weight="bold" size={22} />}
+            rightSection={searchQuery === "" && <Kbd>/</Kbd>}
             required
           />
 
@@ -149,7 +170,11 @@ export default function SearchPage() {
             radius="md"
             variant={validInput ? "gradient" : "default"}
             gradient={{ from: "brand.4", to: "brand.3" }}>
-            {errorMode ? "Download" : "Search"}
+            {errorMode
+              ? "Download"
+              : waitSeconds > 0
+              ? `Search (${waitSeconds}s)`
+              : "Search"}
           </Button>
         </Group>
       </form>
@@ -196,4 +221,24 @@ export default function SearchPage() {
       )}
     </Stack>
   );
+}
+
+// useSearchCountdown returns the whole seconds left until the server accepts
+// another search, updating every second while the wait lasts.
+function useSearchCountdown(): number {
+  const nextSearchAt = useAppSelector((store) => store.state.nextSearchAt);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    setNow(Date.now());
+    if (nextSearchAt <= Date.now()) return;
+
+    const timer = setInterval(() => {
+      setNow(Date.now());
+      if (Date.now() >= nextSearchAt) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [nextSearchAt]);
+
+  return Math.max(0, Math.ceil((nextSearchAt - now) / 1000));
 }

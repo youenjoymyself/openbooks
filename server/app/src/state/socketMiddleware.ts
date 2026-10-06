@@ -13,16 +13,19 @@ import {
   MessageType,
   Notification,
   NotificationType,
+  RateLimitResponse,
   Response,
   SearchResponse
 } from "./messages";
 import { addNotification } from "./notificationSlice";
 import {
+  delayNextSearch,
   removeInFlightDownload,
   resetPendingRequests,
   sendMessage,
   setConnectionState,
   setSearchResults,
+  setSearchTimeout,
   setUsername
 } from "./stateSlice";
 import { AppDispatch, RootState } from "./store";
@@ -113,6 +116,9 @@ const route = (dispatch: AppDispatch, msg: MessageEvent<any>): void => {
         return notification;
       case MessageType.CONNECT:
         dispatch(setUsername((response as ConnectionResponse).name));
+        dispatch(
+          setSearchTimeout((response as ConnectionResponse).searchTimeout ?? 0)
+        );
         return notification;
       case MessageType.SEARCH:
         dispatch(setSearchResults(response as SearchResponse));
@@ -131,6 +137,9 @@ const route = (dispatch: AppDispatch, msg: MessageEvent<any>): void => {
       }
       case MessageType.RATELIMIT:
         dispatch(deleteHistoryItem());
+        dispatch(
+          delayNextSearch((response as RateLimitResponse).retryAfter ?? 0)
+        );
         return notification;
       default:
         console.error(response);

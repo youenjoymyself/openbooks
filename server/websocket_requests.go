@@ -83,7 +83,8 @@ func (c *Client) startIrcConnection(server *server) {
 			Title:            "Welcome, connection established.",
 			Detail:           fmt.Sprintf("IRC username %s", c.irc.Nick()),
 		},
-		Name: c.irc.Nick(),
+		Name:          c.irc.Nick(),
+		SearchTimeout: server.config.SearchTimeout.Seconds(),
 	})
 }
 

@@ -181,3 +181,17 @@ func TestFailureResponses(t *testing.T) {
 	assert.Equal(t, DANGER, download.NotificationType)
 	assert.Empty(t, download.DownloadPath)
 }
+
+func TestRateLimitResponse(t *testing.T) {
+	s := testServer(t, Config{SearchTimeout: time.Minute})
+	c := testClient()
+
+	c.sendSearchRequest(&SearchRequest{Query: "first"}, s)
+	<-c.outbox
+	c.sendSearchRequest(&SearchRequest{Query: "second"}, s)
+
+	limited, ok := (<-c.outbox).(RateLimitResponse)
+	require.True(t, ok, "second search is rate limited")
+	assert.Equal(t, RATELIMIT, limited.MessageType)
+	assert.InDelta(t, 60, limited.RetryAfter, 1)
+}
